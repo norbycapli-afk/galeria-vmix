@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galería de imágenes para vMix</title>
+<style>
+:root{
+  --base:#14161a; --panel:#1d2026; --linea:#2c313a; --texto:#e8eaed; --suave:#8b93a1;
+  --aire:#ff3b30; --ok:#3ddc84; --fade:400ms;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--base);color:var(--texto);font:15px/1.4 "Segoe UI",system-ui,Roboto,sans-serif}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel);border:1px solid var(--linea);border-radius:6px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--suave)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+select,input[type=text]{background:var(--base);border:1px solid var(--linea);border-radius:6px;padding:8px 10px}
+
+/* ---------- salida (vMix) ---------- */
+body.salida{background:transparent;overflow:hidden}
+body.salida #panel{display:none}
+#stage{position:fixed;inset:0}
+#stage img{position:absolute;inset:0;width:100%;height:100%;opacity:0}
+#stage img.on{opacity:1}
+body:not(.salida) #stage{display:none}
+
+/* ---------- panel ---------- */
+#panel{max-width:1100px;margin:0 auto;padding:16px}
+.barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.barra h1{font-size:18px;margin:0 auto 0 0;font-weight:600}
+.barra label{color:var(--suave);display:flex;gap:6px;align-items:center}
+#sacar{background:var(--aire);border-color:var(--aire);color:#fff;font-weight:600}
+#sacar:disabled{background:var(--panel);border-color:var(--linea);color:var(--suave);cursor:default}
+#drop{border:2px dashed var(--linea);border-radius:10px;padding:28px 16px;text-align:center;color:var(--suave);cursor:pointer;margin-bottom:14px}
+#drop.sobre{border-color:var(--ok);color:var(--texto)}
+#estado{min-height:22px;color:var(--suave);margin-bottom:10px}
+#grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.tarjeta{background:var(--panel);border:2px solid var(--linea);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.tarjeta.aire{border-color:var(--aire)}
+.mini{aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative;
+  background:conic-gradient(#2a2e36 25%,#23262d 0 50%,#2a2e36 0 75%,#23262d 0) 0 0/16px 16px}
+.mini img{max-width:100%;max-height:100%;object-fit:contain}
+.mini .tag{position:absolute;top:6px;left:6px;background:var(--aire);color:#fff;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px}
+.nombre{padding:8px 10px 0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acciones{display:flex;gap:6px;padding:8px 10px 10px}
+.acciones button{flex:1;padding:7px 6px}
+.acciones .al-aire{background:var(--ok);border-color:var(--ok);color:#06210f;font-weight:600}
+.vacio{grid-column:1/-1;text-align:center;color:var(--suave);padding:30px}
+.url{display:flex;gap:8px;margin-top:18px}
+.url input{flex:1;min-width:0}
+dialog{background:var(--panel);color:var(--texto);border:1px solid var(--linea);border-radius:10px;max-width:520px;width:92%;padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{margin:0 0 8px;font-size:17px}
+dialog p{color:var(--suave);margin:0 0 12px}
+dialog input{width:100%;margin-bottom:12px}
+dialog .fila{display:flex;gap:8px;justify-content:flex-end}
+</style>
+</head>
+<body>
+
+<!-- Salida para vMix -->
+<div id="stage"><img id="a" alt=""><img id="b" alt=""></div>
+
+<!-- Panel de carga y control -->
+<main id="panel">
+  <div class="barra">
+    <h1>Galería de imágenes</h1>
+    <label>Canal <select id="canal"></select></label>
+    <label>Ajuste <select id="ajuste">
+      <option value="contener">Contener</option>
+      <option value="llenar">Llenar</option>
+      <option value="estirar">Estirar</option>
+    </select></label>
+    <label>Transición <select id="transicion">
+      <option value="fundido">Fundido</option>
+      <option value="izquierda">Deslizar a la izquierda</option>
+      <option value="derecha">Deslizar a la derecha</option>
+      <option value="arriba">Deslizar hacia arriba</option>
+      <option value="zoom">Zoom</option>
+      <option value="cortina">Cortina</option>
+      <option value="corte">Corte directo</option>
+    </select></label>
+    <label>Duración <select id="duracion">
+      <option value="300">0,3 s</option>
+      <option value="600" selected>0,6 s</option>
+      <option value="1000">1 s</option>
+      <option value="1500">1,5 s</option>
+      <option value="2500">2,5 s</option>
+    </select></label>
+    <button id="sacar" disabled>Sacar del aire</button>
+    <button id="cfg">Conexión</button>
+  </div>
+
+  <div id="drop" tabindex="0">Arrastrá imágenes acá o tocá para elegirlas</div>
+  <input id="archivos" type="file" accept="image/*" multiple hidden>
+  <div id="estado" role="status"></div>
+  <div id="grilla"></div>
+
+  <div class="url">
+    <input id="urlvmix" type="text" readonly aria-label="Dirección para vMix">
+    <button id="copiar">Copiar dirección de vMix</button>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <h2>Conexión con Firebase</h2>
+  <p>Pegá la URL de tu Realtime Database, por ejemplo https://mi-proyecto-default-rtdb.firebaseio.com</p>
+  <input id="dburl" type="text" placeholder="https://...firebaseio.com">
+  <div class="fila">
+    <button id="cancelar">Cancelar</button>
+    <button id="guardar" class="al-aire" style="background:var(--ok);color:#06210f;border-color:var(--ok)">Guardar</button>
+  </div>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const P = new URLSearchParams(location.search);
+const MODO = P.get('modo') === 'salida' ? 'salida' : 'panel';
+const ls = { get:k=>{try{return localStorage.getItem(k)}catch(e){return null}}, set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}} };
+const DB = (P.get('db') || ls.get('gi_db') || '').trim().replace(/\/+$/,'');
+const CANAL = P.get('canal') || ls.get('gi_canal') || '1';
+const AJUSTES = { contener:'contain', llenar:'cover', estirar:'fill' };
+
+const api = (path, opts) => fetch(`${DB}/${path}.json`, opts).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+const poner = (path, body) => api(path, { method:'PUT', body:JSON.stringify(body) });
+const borrar = path => api(path, { method:'DELETE' });
+function escuchar(path, cb){
+  const es = new EventSource(`${DB}/${path}.json`);
+  es.addEventListener('put', cb);
+  es.addEventListener('patch', cb);
+  return es; // EventSource reconecta solo
+}
+
+/* =============== SALIDA (vMix) =============== */
+function iniciarSalida(){
+  document.body.classList.add('salida');
+  const fade = +(P.get('fade') || 400);
+  document.documentElement.style.setProperty('--fade', fade + 'ms');
+  if (P.get('fondo')) document.body.style.background = P.get('fondo');
+
+  const imgs = [$('#a'), $('#b')];
+  let activo = 0, clave = null, cola = Promise.resolve();
+  const cache = new Map();
+
+  async function datos(id){
+    if (!cache.has(id)) { const r = await api(`imagenes/${id}`); cache.set(id, r && r.data); }
+    return cache.get(id);
+  }
+  const TR = {
+    fundido:   { ent:[{opacity:0},{opacity:1}], sal:[{opacity:1},{opacity:0}] },
+    izquierda: { ent:[{transform:'translateX(100%)'},{transform:'none'}], sal:[{transform:'none'},{transform:'translateX(-100%)'}] },
+    derecha:   { ent:[{transform:'translateX(-100%)'},{transform:'none'}], sal:[{transform:'none'},{transform:'translateX(100%)'}] },
+    arriba:    { ent:[{transform:'translateY(100%)'},{transform:'none'}], sal:[{transform:'none'},{transform:'translateY(-100%)'}] },
+    zoom:      { ent:[{opacity:0,transform:'scale(.85)'},{opacity:1,transform:'none'}], sal:[{opacity:1,transform:'none'},{opacity:0,transform:'scale(1.15)'}] },
+    cortina:   { ent:[{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0 0 0)'}], sal:[{clipPath:'inset(0 0 0 0)'},{clipPath:'inset(0 0 0 100%)'}] },
+    corte:     null
+  };
+  function mover(el, kf, ms, fin){
+    if (!kf || !ms) { if (fin) fin(); return; }
+    const a = el.animate(kf, { duration:ms, easing:'ease-in-out' });
+    if (fin) a.onfinish = fin;
+  }
+  async function aplicar(){
+    const s = await api(`salida/${CANAL}`);
+    const nombre = s && TR[s.transicion] !== undefined ? s.transicion : 'fundido';
+    const T = TR[nombre];
+    const ms = s && s.duracion != null ? +s.duracion : fade;
+    imgs.forEach(i => i.getAnimations().forEach(a => a.cancel()));
+    const ant = imgs[activo], sig = imgs[1 - activo];
+    sig.classList.remove('on');
+
+    if (!s || !s.visible || !s.id) {            // sacar del aire
+      clave = null;
+      if (ant.classList.contains('on')) mover(ant, T && T.sal, ms, () => ant.classList.remove('on'));
+      return;
+    }
+    const k = s.id + '|' + s.ajuste;
+    if (k === clave) return;
+    const d = await datos(s.id);
+    if (!d) return;
+    sig.style.objectFit = AJUSTES[s.ajuste] || 'contain';
+    sig.src = d;
+    try { await sig.decode(); } catch(e) {}
+    ant.style.zIndex = 1; sig.style.zIndex = 2;
+    sig.classList.add('on');
+    mover(sig, T && T.ent, ms);
+    if (ant.classList.contains('on')) mover(ant, T && T.sal, ms, () => ant.classList.remove('on'));
+    activo = 1 - activo; clave = k;
+  }
+  const refrescar = () => { cola = cola.then(aplicar).catch(()=>{}); };
+  if (!DB) return;
+  refrescar();
+  escuchar(`salida/${CANAL}`, refrescar);
+  setInterval(refrescar, 10000); // red de seguridad
+}
+
+/* =============== PANEL =============== */
+function iniciarPanel(){
+  const dlg = $('#dlg'), estado = $('#estado'), grilla = $('#grilla');
+  const dire = () => location.href.split('?')[0] + `?modo=salida&db=${encodeURIComponent(DB)}&canal=${encodeURIComponent(CANAL)}`;
+
+  // canal
+  for (let i = 1; i <= 4; i++) $('#canal').add(new Option('Canal ' + i, i));
+  $('#canal').value = CANAL;
+  $('#canal').onchange = e => { ls.set('gi_canal', e.target.value); const q = new URLSearchParams(location.search); q.set('canal', e.target.value); location.search = q.toString(); };
+
+  // recordar transición, duración y ajuste
+  ['transicion','duracion','ajuste'].forEach(id => {
+    const el = $('#' + id), g = ls.get('gi_' + id);
+    if (g) el.value = g;
+    el.onchange = () => ls.set('gi_' + id, el.value);
+  });
+
+  // conexión
+  $('#dburl').value = DB;
+  $('#cfg').onclick = () => dlg.showModal();
+  $('#cancelar').onclick = () => dlg.close();
+  $('#guardar').onclick = () => { ls.set('gi_db', $('#dburl').value.trim()); const q = new URLSearchParams(location.search); q.delete('db'); location.search = q.toString(); };
+  $('#urlvmix').value = DB ? dire() : '';
+  $('#copiar').onclick = async () => { try { await navigator.clipboard.writeText($('#urlvmix').value); } catch(e) { $('#urlvmix').select(); document.execCommand('copy'); } estado.textContent = 'Dirección copiada. Pegala en vMix → Add Input → Web Browser.'; };
+  if (!DB) { estado.textContent = 'Falta configurar la conexión.'; dlg.showModal(); return; }
+
+  // subida
+  const drop = $('#drop'), inp = $('#archivos');
+  drop.onclick = () => inp.click();
+  drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') inp.click(); };
+  inp.onchange = () => subir([...inp.files]);
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('sobre'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('sobre'); }));
+  drop.addEventListener('drop', e => subir([...e.dataTransfer.files]));
+
+  const cargar = f => new Promise((ok, mal) => { const u = URL.createObjectURL(f), i = new Image(); i.onload = () => { URL.revokeObjectURL(u); ok(i); }; i.onerror = mal; i.src = u; });
+  function dibujar(img, max, tipo, q){
+    const k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL(tipo, q);
+  }
+  async function subir(lista){
+    lista = lista.filter(f => f.type.startsWith('image/'));
+    let n = 0;
+    for (const f of lista) {
+      estado.textContent = `Subiendo ${++n} de ${lista.length}: ${f.name}`;
+      try {
+        const img = await cargar(f);
+        const png = f.type === 'image/png' || f.type === 'image/webp' || f.type === 'image/gif';
+        let data = png ? dibujar(img, 1920, 'image/png') : dibujar(img, 1920, 'image/jpeg', .88);
+        if (data.length > 5e6) data = png ? dibujar(img, 1280, 'image/png') : dibujar(img, 1280, 'image/jpeg', .8);
+        const mini = dibujar(img, 320, png ? 'image/webp' : 'image/jpeg', .75);
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const nombre = f.name.replace(/\.[^.]+$/, '');
+        await poner(`imagenes/${id}`, { data });
+        await poner(`miniaturas/${id}`, { nombre, data: mini, ts: Date.now() });
+      } catch(e) { estado.textContent = `No se pudo subir ${f.name}: ${e.message}`; return; }
+    }
+    inp.value = '';
+    estado.textContent = lista.length ? 'Listo. Imágenes subidas.' : 'No hay imágenes en la selección.';
+  }
+
+  // listado
+  let minis = {}, salidaAct = null;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function pintar(){
+    const ids = Object.keys(minis).sort((a, b) => minis[b].ts - minis[a].ts);
+    const aire = salidaAct && salidaAct.visible ? salidaAct.id : null;
+    $('#sacar').disabled = !aire;
+    if (!ids.length) { grilla.innerHTML = '<div class="vacio">Todavía no hay imágenes. Subí la primera.</div>'; return; }
+    grilla.innerHTML = ids.map(id => `
+      <div class="tarjeta ${id === aire ? 'aire' : ''}" data-id="${id}">
+        <div class="mini"><img src="${minis[id].data}" alt="">${id === aire ? '<span class="tag">AL AIRE</span>' : ''}</div>
+        <div class="nombre" title="${esc(minis[id].nombre)}">${esc(minis[id].nombre)}</div>
+        <div class="acciones"><button class="al-aire" data-a="aire">Al aire</button><button data-a="borrar">Borrar</button></div>
+      </div>`).join('');
+  }
+  grilla.onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const id = b.closest('.tarjeta').dataset.id;
+    try {
+      if (b.dataset.a === 'aire') {
+        await poner(`salida/${CANAL}`, { id, visible:true, ajuste:$('#ajuste').value, transicion:$('#transicion').value, duracion:+$('#duracion').value, ts:Date.now() });
+      } else if (confirm('¿Borrar esta imagen?')) {
+        if (salidaAct && salidaAct.id === id) await poner(`salida/${CANAL}`, { id:null, visible:false, ts:Date.now() });
+        await borrar(`imagenes/${id}`); await borrar(`miniaturas/${id}`);
+      }
+    } catch(err) { estado.textContent = 'Error: ' + err.message; }
+  };
+  $('#sacar').onclick = () => poner(`salida/${CANAL}`, { id:salidaAct.id, visible:false, ajuste:salidaAct.ajuste, transicion:$('#transicion').value, duracion:+$('#duracion').value, ts:Date.now() }).catch(e => estado.textContent = 'Error: ' + e.message);
+
+  let t;
+  const refrescar = () => { clearTimeout(t); t = setTimeout(async () => {
+    try { [minis, salidaAct] = await Promise.all([api('miniaturas'), api(`salida/${CANAL}`)]); minis = minis || {}; pintar(); }
+    catch(e) { estado.textContent = 'No se pudo leer la base: ' + e.message + '. Revisá la URL y las reglas de Firebase.'; }
+  }, 150); };
+  refrescar();
+  escuchar('miniaturas', refrescar);
+  escuchar(`salida/${CANAL}`, refrescar);
+}
+
+MODO === 'salida' ? iniciarSalida() : iniciarPanel();
+</script>
+</body>
+</html>
