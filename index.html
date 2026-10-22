@@ -107,6 +107,7 @@ dialog .fila{display:flex;gap:8px;justify-content:flex-end}
   <div id="estado" role="status"></div>
   <div id="grilla"></div>
 
+  <p id="ver" style="color:var(--suave);font-size:12px;margin:14px 0 0">Versión con transiciones y ciclo continuo</p>
   <div class="url">
     <input id="urlvmix" type="text" readonly aria-label="Dirección para vMix">
     <button id="copiar">Copiar dirección de vMix</button>
@@ -150,6 +151,10 @@ function iniciarSalida(){
   if (P.get('fondo')) document.body.style.background = P.get('fondo');
 
   const imgs = [$('#a'), $('#b')];
+  const dbgEl = document.createElement('div');
+  dbgEl.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:9;font:12px monospace;color:#fff;background:rgba(0,0,0,.7);padding:3px 6px;display:none';
+  document.body.appendChild(dbgEl);
+  const dbg = m => { if (P.get('debug')) { dbgEl.style.display = 'block'; dbgEl.textContent = m; } };
   let activo = 0, clave = null, cola = Promise.resolve();
   const cache = new Map();
 
@@ -167,11 +172,11 @@ function iniciarSalida(){
     corte:     null
   };
   function mover(el, kf, ms, fin){
-    if (!kf || !ms) { if (fin) fin(); return; }
+    if (!kf || !ms || !el.animate) { if (fin) fin(); return; }
     const a = el.animate(kf, { duration:ms, easing:'ease-in-out' });
     if (fin) a.onfinish = fin;
   }
-  const cancelar = () => imgs.forEach(i => i.getAnimations().forEach(a => a.cancel()));
+  const cancelar = () => imgs.forEach(i => { if (i.getAnimations) i.getAnimations().forEach(a => a.cancel()); });
   async function mostrar(id, ajuste, T, ms){
     const k = id + '|' + ajuste;
     if (k === clave) return;
@@ -207,9 +212,10 @@ function iniciarSalida(){
     const paso = async () => {
       if (cicloTs !== s.ts) return;
       let ids = [];
-      try { ids = Object.keys(await fetch(`${DB}/miniaturas.json?shallow=true`).then(r => r.json()) || {}).sort(); } catch(e) {}
+      try { ids = Object.keys(await fetch(`${DB}/miniaturas.json?shallow=true`).then(r => r.json()) || {}).sort(); } catch(e) { dbg('Error leyendo imágenes: ' + e.message); }
       if (cicloTs !== s.ts) return;
-      if (ids.length) { try { await mostrar(ids[idx % ids.length], s.ajuste, T, ms); } catch(e) {} idx++; }
+      if (ids.length) { try { await mostrar(ids[idx % ids.length], s.ajuste, T, ms); dbg('Ciclo: imagen ' + (idx % ids.length + 1) + ' de ' + ids.length); } catch(e) { dbg('Error: ' + e.message); } idx++; }
+      else dbg('Ciclo: no hay imágenes');
       timer = setTimeout(paso, espera);
     };
     paso();
@@ -229,7 +235,7 @@ function iniciarSalida(){
     if (!s || !s.visible || !s.id) { ocultar(T, ms); return; }   // sacar del aire
     await mostrar(s.id, s.ajuste, T, ms);
   }
-  const refrescar = () => { cola = cola.then(aplicar).catch(()=>{}); };
+  const refrescar = () => { cola = cola.then(aplicar).catch(e => dbg('Error: ' + e.message)); };
   if (!DB) return;
   refrescar();
   escuchar(`salida/${CANAL}`, refrescar);
