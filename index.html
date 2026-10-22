@@ -249,6 +249,7 @@ function iniciarPanel(){
 
   // canal
   for (let i = 1; i <= 3; i++) $('#canal').add(new Option('Eventos ' + i, i));
+  $('#canal').add(new Option('Eventos Ñ', 'enie'));
   $('#canal').value = CANAL;
   $('#canal').onchange = e => { ls.set('gi_canal', e.target.value); const q = new URLSearchParams(location.search); q.set('canal', e.target.value); location.search = q.toString(); };
 
