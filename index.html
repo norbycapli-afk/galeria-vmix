@@ -89,6 +89,15 @@ dialog .fila{display:flex;gap:8px;justify-content:flex-end}
       <option value="1500">1,5 s</option>
       <option value="2500">2,5 s</option>
     </select></label>
+    <label>Cada <select id="intervalo">
+      <option value="3000">3 s</option>
+      <option value="5000" selected>5 s</option>
+      <option value="8000">8 s</option>
+      <option value="10000">10 s</option>
+      <option value="15000">15 s</option>
+      <option value="30000">30 s</option>
+    </select></label>
+    <button id="ciclo">Ciclo continuo</button>
     <button id="sacar" disabled>Sacar del aire</button>
     <button id="cfg">Conexión</button>
   </div>
@@ -162,25 +171,16 @@ function iniciarSalida(){
     const a = el.animate(kf, { duration:ms, easing:'ease-in-out' });
     if (fin) a.onfinish = fin;
   }
-  async function aplicar(){
-    const s = await api(`salida/${CANAL}`);
-    const nombre = s && TR[s.transicion] !== undefined ? s.transicion : 'fundido';
-    const T = TR[nombre];
-    const ms = s && s.duracion != null ? +s.duracion : fade;
-    imgs.forEach(i => i.getAnimations().forEach(a => a.cancel()));
+  const cancelar = () => imgs.forEach(i => i.getAnimations().forEach(a => a.cancel()));
+  async function mostrar(id, ajuste, T, ms){
+    const k = id + '|' + ajuste;
+    if (k === clave) return;
+    const d = await datos(id);
+    if (!d) return;
+    cancelar();
     const ant = imgs[activo], sig = imgs[1 - activo];
     sig.classList.remove('on');
-
-    if (!s || !s.visible || !s.id) {            // sacar del aire
-      clave = null;
-      if (ant.classList.contains('on')) mover(ant, T && T.sal, ms, () => ant.classList.remove('on'));
-      return;
-    }
-    const k = s.id + '|' + s.ajuste;
-    if (k === clave) return;
-    const d = await datos(s.id);
-    if (!d) return;
-    sig.style.objectFit = AJUSTES[s.ajuste] || 'contain';
+    sig.style.objectFit = AJUSTES[ajuste] || 'contain';
     sig.src = d;
     try { await sig.decode(); } catch(e) {}
     ant.style.zIndex = 1; sig.style.zIndex = 2;
@@ -188,6 +188,46 @@ function iniciarSalida(){
     mover(sig, T && T.ent, ms);
     if (ant.classList.contains('on')) mover(ant, T && T.sal, ms, () => ant.classList.remove('on'));
     activo = 1 - activo; clave = k;
+  }
+  function ocultar(T, ms){
+    cancelar();
+    const ant = imgs[activo];
+    imgs[1 - activo].classList.remove('on');
+    clave = null;
+    if (ant.classList.contains('on')) mover(ant, T && T.sal, ms, () => ant.classList.remove('on'));
+  }
+
+  // ----- ciclo continuo -----
+  let timer = null, cicloTs = null;
+  const pararCiclo = () => { clearTimeout(timer); timer = null; cicloTs = null; };
+  function arrancarCiclo(s, T, ms){
+    pararCiclo(); cicloTs = s.ts;
+    const espera = Math.max(+s.intervalo || 5000, ms + 500);
+    let idx = 0;
+    const paso = async () => {
+      if (cicloTs !== s.ts) return;
+      let ids = [];
+      try { ids = Object.keys(await fetch(`${DB}/miniaturas.json?shallow=true`).then(r => r.json()) || {}).sort(); } catch(e) {}
+      if (cicloTs !== s.ts) return;
+      if (ids.length) { try { await mostrar(ids[idx % ids.length], s.ajuste, T, ms); } catch(e) {} idx++; }
+      timer = setTimeout(paso, espera);
+    };
+    paso();
+  }
+
+  async function aplicar(){
+    const s = await api(`salida/${CANAL}`);
+    const nombre = s && TR[s.transicion] !== undefined ? s.transicion : 'fundido';
+    const T = TR[nombre];
+    const ms = s && s.duracion != null ? +s.duracion : fade;
+
+    if (s && s.visible && s.modo === 'ciclo') {
+      if (cicloTs !== s.ts) arrancarCiclo(s, T, ms);
+      return;
+    }
+    pararCiclo();
+    if (!s || !s.visible || !s.id) { ocultar(T, ms); return; }   // sacar del aire
+    await mostrar(s.id, s.ajuste, T, ms);
   }
   const refrescar = () => { cola = cola.then(aplicar).catch(()=>{}); };
   if (!DB) return;
@@ -207,7 +247,7 @@ function iniciarPanel(){
   $('#canal').onchange = e => { ls.set('gi_canal', e.target.value); const q = new URLSearchParams(location.search); q.set('canal', e.target.value); location.search = q.toString(); };
 
   // recordar transición, duración y ajuste
-  ['transicion','duracion','ajuste'].forEach(id => {
+  ['transicion','duracion','ajuste','intervalo'].forEach(id => {
     const el = $('#' + id), g = ls.get('gi_' + id);
     if (g) el.value = g;
     el.onchange = () => ls.set('gi_' + id, el.value);
@@ -265,8 +305,12 @@ function iniciarPanel(){
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   function pintar(){
     const ids = Object.keys(minis).sort((a, b) => minis[b].ts - minis[a].ts);
-    const aire = salidaAct && salidaAct.visible ? salidaAct.id : null;
-    $('#sacar').disabled = !aire;
+    const enCiclo = !!(salidaAct && salidaAct.visible && salidaAct.modo === 'ciclo');
+    const aire = salidaAct && salidaAct.visible && !enCiclo ? salidaAct.id : null;
+    $('#sacar').disabled = !(salidaAct && salidaAct.visible);
+    $('#ciclo').textContent = enCiclo ? 'Ciclo en marcha ●' : 'Ciclo continuo';
+    $('#ciclo').style.borderColor = enCiclo ? 'var(--aire)' : '';
+    $('#ciclo').style.color = enCiclo ? 'var(--aire)' : '';
     if (!ids.length) { grilla.innerHTML = '<div class="vacio">Todavía no hay imágenes. Subí la primera.</div>'; return; }
     grilla.innerHTML = ids.map(id => `
       <div class="tarjeta ${id === aire ? 'aire' : ''}" data-id="${id}">
@@ -287,7 +331,13 @@ function iniciarPanel(){
       }
     } catch(err) { estado.textContent = 'Error: ' + err.message; }
   };
-  $('#sacar').onclick = () => poner(`salida/${CANAL}`, { id:salidaAct.id, visible:false, ajuste:salidaAct.ajuste, transicion:$('#transicion').value, duracion:+$('#duracion').value, ts:Date.now() }).catch(e => estado.textContent = 'Error: ' + e.message);
+  $('#ciclo').onclick = () => {
+    if (!Object.keys(minis).length) { estado.textContent = 'Primero subí al menos una imagen.'; return; }
+    poner(`salida/${CANAL}`, { modo:'ciclo', visible:true, ajuste:$('#ajuste').value, transicion:$('#transicion').value, duracion:+$('#duracion').value, intervalo:+$('#intervalo').value, ts:Date.now() })
+      .then(() => estado.textContent = 'Ciclo iniciado. Se repite en bucle con todas las imágenes de la galería.')
+      .catch(e => estado.textContent = 'Error: ' + e.message);
+  };
+  $('#sacar').onclick = () => poner(`salida/${CANAL}`, { id:salidaAct.id || null, visible:false, ajuste:salidaAct.ajuste || $('#ajuste').value, transicion:$('#transicion').value, duracion:+$('#duracion').value, ts:Date.now() }).catch(e => estado.textContent = 'Error: ' + e.message);
 
   let t;
   const refrescar = () => { clearTimeout(t); t = setTimeout(async () => {
